@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>経費申請 | 経費精算システム</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <a href="index.html" class="brand">
+        <div class="brand-stamp">経</div>
+        <div class="brand-text">
+          <h1>経費精算システム</h1>
+          <p>EXPENSE REPORT WORKFLOW</p>
+        </div>
+      </a>
+      <span class="page-badge">社員画面</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-title">
+      <h2>経費申請</h2>
+      <span>領収書を添付すると内容を自動で入力できます</span>
+    </div>
+
+    <div class="employee-grid">
+      <!-- left: form -->
+      <div class="card card-pad">
+        <p class="section-label">申請内容</p>
+
+        <div class="field" id="f-name">
+          <label>氏名<span class="req">必須</span></label>
+          <input type="text" id="inputName" placeholder="山田 太郎">
+          <div class="error-msg">氏名を入力してください。</div>
+        </div>
+
+        <div class="row-2">
+          <div class="field" id="f-department">
+            <label>部署<span class="req">必須</span></label>
+            <select id="inputDepartment">
+              <option value="">選択してください</option>
+              <option>営業部</option>
+              <option>総務部</option>
+              <option>人事部</option>
+              <option>開発部</option>
+              <option>マーケティング部</option>
+              <option>その他</option>
+            </select>
+            <div class="error-msg">部署を選択してください。</div>
+          </div>
+          <div class="field" id="f-date">
+            <label>利用日<span class="req">必須</span></label>
+            <input type="date" id="inputDate">
+            <div class="error-msg">利用日を選択してください。</div>
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="field" id="f-amount">
+            <label>金額<span class="req">必須</span></label>
+            <div class="amount-wrap">
+              <span>¥</span>
+              <input type="number" id="inputAmount" placeholder="0" min="1" step="1">
+            </div>
+            <div class="error-msg">正しい金額（1円以上）を入力してください。</div>
+          </div>
+          <div class="field" id="f-account">
+            <label>勘定科目<span class="req">必須</span></label>
+            <select id="inputAccount">
+              <option value="">選択してください</option>
+              <option>交通費</option>
+              <option>会議費</option>
+              <option>交際費</option>
+              <option>消耗品費</option>
+              <option>通信費</option>
+              <option>宿泊費</option>
+              <option>新聞図書費</option>
+              <option>会議飲食費</option>
+              <option>その他</option>
+            </select>
+            <div class="error-msg">勘定科目を選択してください。</div>
+          </div>
+        </div>
+
+        <div class="field" id="f-store">
+          <label>利用店舗<span class="req">必須</span></label>
+          <input type="text" id="inputStore" placeholder="例）JR東海／スターバックス">
+          <div class="error-msg">利用店舗を入力してください。</div>
+        </div>
+
+        <div class="field" id="f-purpose">
+          <label>利用目的<span class="req">必須</span></label>
+          <textarea id="inputPurpose" placeholder="例）大阪出張／取引先との打ち合わせ"></textarea>
+          <div class="error-msg">利用目的を入力してください。</div>
+        </div>
+
+        <div class="submit-bar">
+          <button class="btn btn-primary btn-block" onclick="submitApplication()">この内容で送信する</button>
+          <p class="submit-note">送信後は本部画面の申請一覧に反映されます</p>
+        </div>
+      </div>
+
+      <!-- right: receipt + gemini -->
+      <div class="card card-pad">
+        <p class="section-label">領収書添付</p>
+
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('receiptInput').click()">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#6B6E72" stroke-width="1.6">
+            <path d="M12 16V4M12 4L7 9M12 4l5 5" />
+            <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+          </svg>
+          <p class="main">クリックまたはドラッグして領収書を追加</p>
+          <p>JPG / PNG（画像ファイルを推奨）</p>
+        </div>
+        <input type="file" id="receiptInput" accept="image/*,.pdf">
+
+        <div class="receipt-preview" id="receiptPreview">
+          <img id="receiptImg" alt="領収書プレビュー">
+          <div class="file-row">
+            <span id="receiptFileName"></span>
+            <button onclick="clearReceipt()">削除</button>
+          </div>
+        </div>
+
+        <div class="gemini-block">
+          <button class="btn btn-ghost btn-block" id="geminiBtn" onclick="extractReceiptInfo()">
+            ✨ Geminiで領収書から自動入力
+          </button>
+          <div class="gemini-status" id="geminiStatus"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="common.js"></script>
+  <script>
+    // ------------------------------------------------------------
+    // Receipt upload
+    // ------------------------------------------------------------
+    let currentReceipt = null; // { dataUrl, name, mimeType, base64 }
+
+    const dropzone = document.getElementById('dropzone');
+    const receiptInput = document.getElementById('receiptInput');
+
+    receiptInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) handleReceiptFile(e.target.files[0]);
+    });
+    ['dragover', 'dragenter'].forEach(ev => {
+      dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+      dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('drag'); });
+    });
+    dropzone.addEventListener('drop', (e) => {
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) handleReceiptFile(e.dataTransfer.files[0]);
+    });
+
+    function handleReceiptFile(file) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const dataUrl = e.target.result;
+        const base64 = dataUrl.split(',')[1];
+        currentReceipt = { dataUrl, name: file.name, mimeType: file.type || 'image/jpeg', base64 };
+        const isImage = (file.type || '').startsWith('image/');
+        document.getElementById('receiptPreview').classList.add('show');
+        document.getElementById('receiptFileName').textContent = file.name;
+        const img = document.getElementById('receiptImg');
+        if (isImage) {
+          img.src = dataUrl;
+          img.style.display = 'block';
+        } else {
+          img.style.display = 'none';
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearReceipt() {
+      currentReceipt = null;
+      receiptInput.value = '';
+      document.getElementById('receiptPreview').classList.remove('show');
+      document.getElementById('receiptImg').src = '';
+    }
+
+    // ------------------------------------------------------------
+    // Gemini API — receipt auto-fill
+    // ------------------------------------------------------------
+    // ------------------------------------------------------------
+    // Gemini API — receipt auto-fill (GAS中継版)
+    // ------------------------------------------------------------
+    async function extractReceiptInfo() {
+      const btn = document.getElementById('geminiBtn');
+
+      if (!currentReceipt) {
+        setGeminiStatus('先に領収書の画像を添付してください。', 'err');
+        return;
+      }
+      if (!currentReceipt.mimeType.startsWith('image/')) {
+        setGeminiStatus('自動入力は画像ファイル（JPG/PNG）のみに対応しています。', 'err');
+        return;
+      }
+
+      btn.disabled = true;
+      setGeminiStatus('領収書を解析しています…', 'loading');
+
+      try {
+        // common.jsに定義されたfetchFromGas関数を使用
+        const parsed = await fetchFromGas({
+          action: "extract",
+          mimeType: currentReceipt.mimeType,
+          base64: currentReceipt.base64
+        });
+
+        if (parsed.date) { document.getElementById('inputDate').value = parsed.date; }
+        if (parsed.amount) { document.getElementById('inputAmount').value = parsed.amount; }
+        if (parsed.store) { document.getElementById('inputStore').value = parsed.store; }
+        if (parsed.purpose) { document.getElementById('inputPurpose').value = parsed.purpose; }
+        if (parsed.account) {
+          const sel = document.getElementById('inputAccount');
+          for (const opt of sel.options) { if (opt.value === parsed.account) { sel.value = parsed.account; break; } }
+        }
+        setGeminiStatus('領収書の内容を自動入力しました。内容をご確認ください。', 'ok');
+      } catch (err) {
+        setGeminiStatus('自動入力に失敗しました：' + err.message, 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function setGeminiStatus(msg, type) {
+      const el = document.getElementById('geminiStatus');
+      el.textContent = msg;
+      el.className = 'gemini-status show ' + type;
+    }
+
+    // ------------------------------------------------------------
+    // Validation + submit
+    // ------------------------------------------------------------
+    function setFieldError(id, hasError) {
+      document.getElementById(id).classList.toggle('error', hasError);
+    }
+
+    function validateForm() {
+      let valid = true;
+      const name = document.getElementById('inputName').value.trim();
+      const department = document.getElementById('inputDepartment').value;
+      const date = document.getElementById('inputDate').value;
+      const amount = document.getElementById('inputAmount').value;
+      const account = document.getElementById('inputAccount').value;
+      const store = document.getElementById('inputStore').value.trim();
+      const purpose = document.getElementById('inputPurpose').value.trim();
+
+      setFieldError('f-name', !name); if (!name) valid = false;
+      setFieldError('f-department', !department); if (!department) valid = false;
+      setFieldError('f-date', !date); if (!date) valid = false;
+      const amountNum = Number(amount);
+      const amountBad = !amount || isNaN(amountNum) || amountNum <= 0;
+      setFieldError('f-amount', amountBad); if (amountBad) valid = false;
+      setFieldError('f-account', !account); if (!account) valid = false;
+      setFieldError('f-store', !store); if (!store) valid = false;
+      setFieldError('f-purpose', !purpose); if (!purpose) valid = false;
+
+      return valid;
+    }
+
+    async function submitApplication() {
+      if (!validateForm()) {
+        showToast('未入力・不正な項目があります。赤色の項目をご確認ください。', true);
+        return;
+      }
+
+      const submitBtn = document.getElementById('submitBtn') || document.querySelector('button[onclick="submitApplication()"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '送信中…';
+      }
+
+      const app = {
+        name: document.getElementById('inputName').value.trim(),
+        department: document.getElementById('inputDepartment').value,
+        date: document.getElementById('inputDate').value,
+        amount: Number(document.getElementById('inputAmount').value),
+        store: document.getElementById('inputStore').value.trim(),
+        purpose: document.getElementById('inputPurpose').value.trim(),
+        account: document.getElementById('inputAccount').value,
+        receipt: currentReceipt ? currentReceipt.dataUrl : null,
+        receiptIsImage: currentReceipt ? currentReceipt.mimeType.startsWith('image/') : false
+      };
+
+      try {
+        await fetchFromGas({
+          action: "add",
+          appData: app
+        });
+
+        // reset form
+        document.getElementById('inputName').value = '';
+        document.getElementById('inputDepartment').value = '';
+        document.getElementById('inputDate').value = '';
+        document.getElementById('inputAmount').value = '';
+        document.getElementById('inputAccount').value = '';
+        document.getElementById('inputStore').value = '';
+        document.getElementById('inputPurpose').value = '';
+        clearReceipt();
+        setGeminiStatus('', '');
+        document.getElementById('geminiStatus').classList.remove('show');
+        ['f-name', 'f-department', 'f-date', 'f-amount', 'f-account', 'f-store', 'f-purpose'].forEach(id => setFieldError(id, false));
+
+        showToast('経費申請を送信しました。');
+      } catch (e) {
+        console.error("申請送信エラー", e);
+        showToast('申請の保存に失敗しました：' + e.message, true);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'この内容で送信する';
+        }
+        document.getElementById('inputDate').valueAsDate = new Date();
+      }
+    }
+
+    // init default date to today for convenience
+    document.getElementById('inputDate').valueAsDate = new Date();
+  </script>
+
+</body>
+
+</html>

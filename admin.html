@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>申請一覧 | 経費精算システム</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <a href="index.html" class="brand">
+      <div class="brand-stamp">経</div>
+      <div class="brand-text">
+        <h1>経費精算システム</h1>
+        <p>EXPENSE REPORT WORKFLOW</p>
+      </div>
+    </a>
+    <span class="page-badge">本部画面</span>
+  </div>
+</header>
+
+<main>
+  <div class="page-title">
+    <h2>申請一覧</h2>
+    <span>ステータスの変更・検索・削除ができます</span>
+  </div>
+
+  <div class="hq-summary">
+    <div class="stat">
+      <div class="stat-label">総申請件数</div>
+      <div class="stat-value" id="statTotal">0 件</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">申請中</div>
+      <div class="stat-value" id="statPending">0 件</div>
+    </div>
+    <div class="stat accent">
+      <div class="stat-label">承認済み 合計金額</div>
+      <div class="stat-value" id="statApprovedAmount">¥0</div>
+    </div>
+    <div class="stat teal">
+      <div class="stat-label">全申請 合計金額</div>
+      <div class="stat-value" id="statTotalAmount">¥0</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" class="search-input" id="searchKeyword" placeholder="氏名・部署・利用店舗・利用目的で検索" oninput="renderTable()">
+    <select id="filterStatus" onchange="renderTable()">
+      <option value="">すべてのステータス</option>
+      <option value="pending">申請中</option>
+      <option value="approved">承認済み</option>
+      <option value="rejected">却下</option>
+    </select>
+    <select id="filterAccount" onchange="renderTable()">
+      <option value="">すべての勘定科目</option>
+      <option>交通費</option>
+      <option>会議費</option>
+      <option>交際費</option>
+      <option>消耗品費</option>
+      <option>通信費</option>
+      <option>宿泊費</option>
+      <option>新聞図書費</option>
+      <option>会議飲食費</option>
+      <option>その他</option>
+    </select>
+    <div class="date-range">
+      <span>期間</span>
+      <input type="date" id="filterFrom" onchange="renderTable()">
+      <span>〜</span>
+      <input type="date" id="filterTo" onchange="renderTable()">
+    </div>
+    <span class="toolbar-count" id="toolbarCount">0 件表示中</span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>利用日</th>
+          <th>氏名</th>
+          <th>部署</th>
+          <th>金額</th>
+          <th>勘定科目</th>
+          <th>利用店舗</th>
+          <th>利用目的</th>
+          <th>領収書</th>
+          <th>ステータス</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr class="empty-row"><td colspan="10">申請はまだありません</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="receiptModal" onclick="if(event.target===this) closeModal()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>領収書プレビュー</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <img id="modalImg" alt="領収書">
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+  // ------------------------------------------------------------
+  // HQ screen — table render / filter / status / delete
+  // ------------------------------------------------------------
+  let allApplications = [];
+
+  async function renderTable(){
+    allApplications = await loadApplications();
+    const applications = allApplications;
+
+    const keyword = document.getElementById('searchKeyword').value.trim().toLowerCase();
+    const statusFilter = document.getElementById('filterStatus').value;
+    const accountFilter = document.getElementById('filterAccount').value;
+    const from = document.getElementById('filterFrom').value;
+    const to = document.getElementById('filterTo').value;
+
+    let list = applications.filter(a => {
+      if (statusFilter && a.status !== statusFilter) return false;
+      if (accountFilter && a.account !== accountFilter) return false;
+      if (from && a.date < from) return false;
+      if (to && a.date > to) return false;
+      if (keyword){
+        const hay = (a.name + ' ' + (a.department || '') + ' ' + (a.store || '') + ' ' + a.purpose).toLowerCase();
+        if (!hay.includes(keyword)) return false;
+      }
+      return true;
+    });
+
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+
+    if (list.length === 0){
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="10">条件に一致する申請がありません</td></tr>';
+    } else {
+      list.forEach(a => {
+        const tr = document.createElement('tr');
+
+        const receiptCell = a.receipt
+          ? `<span class="receipt-link" onclick="viewReceipt(${a.id})">表示</span>`
+          : `<span class="receipt-none">なし</span>`;
+
+        tr.innerHTML = `
+          <td>${a.date}</td>
+          <td>${escapeHtml(a.name)}</td>
+          <td>${escapeHtml(a.department || '')}</td>
+          <td class="amount">${formatYen(a.amount)}</td>
+          <td>${escapeHtml(a.account)}</td>
+          <td>${escapeHtml(a.store || '')}</td>
+          <td class="purpose"><span title="${escapeHtml(a.purpose)}">${escapeHtml(a.purpose)}</span></td>
+          <td>${receiptCell}</td>
+          <td>
+            <span class="stamp-badge ${statusClass[a.status]}">${statusLabel[a.status]}</span>
+            <select class="status-select" onchange="changeStatus(${a.id}, this.value)">
+              <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>申請中</option>
+              <option value="approved" ${a.status === 'approved' ? 'selected' : ''}>承認済み</option>
+              <option value="rejected" ${a.status === 'rejected' ? 'selected' : ''}>却下</option>
+            </select>
+          </td>
+          <td>
+            <div class="row-actions">
+              <button class="icon-btn" title="削除" onclick="deleteApplication(${a.id})">✕</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById('toolbarCount').textContent = `${list.length} 件表示中`;
+
+    // summary stats (based on all applications, not just filtered)
+    const total = applications.length;
+    const pending = applications.filter(a => a.status === 'pending').length;
+    const approvedAmount = applications.filter(a => a.status === 'approved').reduce((s, a) => s + a.amount, 0);
+    const totalAmount = applications.reduce((s, a) => s + a.amount, 0);
+    document.getElementById('statTotal').textContent = total + ' 件';
+    document.getElementById('statPending').textContent = pending + ' 件';
+    document.getElementById('statApprovedAmount').textContent = formatYen(approvedAmount);
+    document.getElementById('statTotalAmount').textContent = formatYen(totalAmount);
+  }
+
+  async function changeStatus(id, newStatus){
+    try {
+      await fetchFromGas({ action: "update", id: id, status: newStatus });
+      await renderTable();
+      showToast(`ステータスを「${statusLabel[newStatus]}」に変更しました。`);
+    } catch (e) {
+      console.error("ステータス更新エラー", e);
+      showToast("ステータスの変更に失敗しました: " + e.message, true);
+    }
+  }
+
+  async function deleteApplication(id){
+    const app = allApplications.find(a => a.id === id);
+    if (!app) return;
+    if (confirm(`${app.name} さんの申請（${app.date} / ${formatYen(app.amount)}）を削除しますか？この操作は取り消せません。`)){
+      try {
+        await fetchFromGas({ action: "delete", id: id });
+        await renderTable();
+        showToast('申請を削除しました。');
+      } catch (e) {
+        console.error("削除エラー", e);
+        showToast("削除に失敗しました: " + e.message, true);
+      }
+    }
+  }
+
+  function viewReceipt(id){
+    const app = allApplications.find(a => a.id === id);
+    if (!app || !app.receipt) return;
+    if (!app.receiptIsImage){
+      showToast('この領収書は画像形式ではないためプレビューできません。', true);
+      return;
+    }
+    document.getElementById('modalImg').src = app.receipt;
+    document.getElementById('receiptModal').classList.add('show');
+  }
+  function closeModal(){
+    document.getElementById('receiptModal').classList.remove('show');
+  }
+
+  // 初期読み込みの実行
+  renderTable().catch(e => console.error("初期ロードエラー", e));
+</script>
+
+</body>
+</html>
