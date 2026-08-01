@@ -120,12 +120,14 @@
             <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
           </svg>
           <p class="main">クリックまたはドラッグして領収書を追加</p>
-          <p>JPG / PNG（画像ファイルを推奨）</p>
+          <p>JPG / PNG / PDF</p>
         </div>
         <input type="file" id="receiptInput" accept="image/*,.pdf">
 
         <div class="receipt-preview" id="receiptPreview">
           <img id="receiptImg" alt="領収書プレビュー">
+          <iframe id="receiptPdf"
+            style="display:none; width:100%; height:220px; border:1px solid var(--border); border-radius:8px;"></iframe>
           <div class="file-row">
             <span id="receiptFileName"></span>
             <button onclick="clearReceipt()">削除</button>
@@ -172,16 +174,22 @@
       reader.onload = function (e) {
         const dataUrl = e.target.result;
         const base64 = dataUrl.split(',')[1];
-        currentReceipt = { dataUrl, name: file.name, mimeType: file.type || 'image/jpeg', base64 };
+        currentReceipt = { dataUrl, name: file.name, mimeType: file.type || 'application/pdf', base64 };
         const isImage = (file.type || '').startsWith('image/');
         document.getElementById('receiptPreview').classList.add('show');
         document.getElementById('receiptFileName').textContent = file.name;
         const img = document.getElementById('receiptImg');
+        const pdf = document.getElementById('receiptPdf');
         if (isImage) {
           img.src = dataUrl;
           img.style.display = 'block';
+          if (pdf) pdf.style.display = 'none';
         } else {
           img.style.display = 'none';
+          if (pdf) {
+            pdf.src = dataUrl;
+            pdf.style.display = 'block';
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -192,6 +200,8 @@
       receiptInput.value = '';
       document.getElementById('receiptPreview').classList.remove('show');
       document.getElementById('receiptImg').src = '';
+      const pdf = document.getElementById('receiptPdf');
+      if (pdf) pdf.src = '';
     }
 
     // ------------------------------------------------------------
@@ -207,8 +217,8 @@
         setGeminiStatus('先に領収書の画像を添付してください。', 'err');
         return;
       }
-      if (!currentReceipt.mimeType.startsWith('image/')) {
-        setGeminiStatus('自動入力は画像ファイル（JPG/PNG）のみに対応しています。', 'err');
+      if (!currentReceipt.mimeType.startsWith('image/') && currentReceipt.mimeType !== 'application/pdf') {
+        setGeminiStatus('自動入力は画像ファイル（JPG/PNG）またはPDFに対応しています。', 'err');
         return;
       }
 
@@ -296,6 +306,7 @@
         purpose: document.getElementById('inputPurpose').value.trim(),
         account: document.getElementById('inputAccount').value,
         receipt: currentReceipt ? currentReceipt.dataUrl : null,
+        receiptName: currentReceipt ? currentReceipt.name : null,
         receiptIsImage: currentReceipt ? currentReceipt.mimeType.startsWith('image/') : false
       };
 

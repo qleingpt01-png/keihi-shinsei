@@ -541,6 +541,9 @@ td.purpose span{
   padding:20px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.25);
 }
+.modal-box.modal-lg{
+  max-width:800px;
+}
 .modal-box img{ width:100%; border-radius:8px; border:1px solid var(--border); }
 .modal-box .modal-head{
   display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;

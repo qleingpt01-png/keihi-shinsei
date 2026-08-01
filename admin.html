@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -75,6 +76,10 @@
       <input type="date" id="filterTo" onchange="renderTable()">
     </div>
     <span class="toolbar-count" id="toolbarCount">0 件表示中</span>
+    <button id="btnDownloadExcel" onclick="downloadExcel()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:var(--teal,#2a9d8f);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s;" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Excelダウンロード
+    </button>
   </div>
 
   <div class="table-wrap">
@@ -109,6 +114,7 @@
       <button class="modal-close" onclick="closeModal()">&times;</button>
     </div>
     <img id="modalImg" alt="領収書">
+    <iframe id="modalPdf" style="display:none; width:100%; height:500px; border:1px solid var(--border); border-radius:8px;"></iframe>
   </div>
 </div>
 
@@ -118,6 +124,7 @@
   // HQ screen — table render / filter / status / delete
   // ------------------------------------------------------------
   let allApplications = [];
+  let filteredList = [];  // 現在表示中（フィルタ済み）のデータ
 
   async function renderTable(){
     allApplications = await loadApplications();
@@ -150,8 +157,9 @@
       list.forEach(a => {
         const tr = document.createElement('tr');
 
+        const receiptFileName = a.receiptName || '表示';
         const receiptCell = a.receipt
-          ? `<span class="receipt-link" onclick="viewReceipt(${a.id})">表示</span>`
+          ? `<span class="receipt-link" onclick="viewReceipt(${a.id})" title="${escapeHtml(receiptFileName)}">${escapeHtml(receiptFileName)}</span>`
           : `<span class="receipt-none">なし</span>`;
 
         tr.innerHTML = `
@@ -181,6 +189,7 @@
       });
     }
 
+    filteredList = list;  // フィルタ結果を保持
     document.getElementById('toolbarCount').textContent = `${list.length} 件表示中`;
 
     // summary stats (based on all applications, not just filtered)
@@ -223,15 +232,75 @@
   function viewReceipt(id){
     const app = allApplications.find(a => a.id === id);
     if (!app || !app.receipt) return;
-    if (!app.receiptIsImage){
-      showToast('この領収書は画像形式ではないためプレビューできません。', true);
-      return;
+    
+    const modalImg = document.getElementById('modalImg');
+    const modalPdf = document.getElementById('modalPdf');
+    const modalBox = document.querySelector('.modal-box');
+    
+    if (app.receiptIsImage){
+      modalImg.src = app.receipt;
+      modalImg.style.display = 'block';
+      if (modalPdf) {
+        modalPdf.src = '';
+        modalPdf.style.display = 'none';
+      }
+      if (modalBox) modalBox.classList.remove('modal-lg');
+    } else {
+      modalImg.style.display = 'none';
+      if (modalPdf) {
+        modalPdf.src = app.receipt;
+        modalPdf.style.display = 'block';
+      }
+      if (modalBox) modalBox.classList.add('modal-lg');
     }
-    document.getElementById('modalImg').src = app.receipt;
     document.getElementById('receiptModal').classList.add('show');
   }
   function closeModal(){
     document.getElementById('receiptModal').classList.remove('show');
+    const modalPdf = document.getElementById('modalPdf');
+    if (modalPdf) modalPdf.src = '';
+  }
+
+  // Excelダウンロード
+  function downloadExcel() {
+    if (!filteredList || filteredList.length === 0) {
+      showToast('ダウンロードするデータがありません。', true);
+      return;
+    }
+    const rows = filteredList.map(a => ({
+      '利用日':     a.date       || '',
+      '氏名':       a.name       || '',
+      '部署':       a.department || '',
+      '金額（円）': Number(a.amount) || 0,
+      '勘定科目':   a.account    || '',
+      '利用店舗':   a.store      || '',
+      '利用目的':   a.purpose    || '',
+      '領収書':     a.receipt ? (a.receiptName || 'あり') : 'なし',
+      'ステータス': statusLabel[a.status] || a.status || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // 列幅の設定
+    ws['!cols'] = [
+      { wch: 12 }, // 利用日
+      { wch: 14 }, // 氏名
+      { wch: 16 }, // 部署
+      { wch: 12 }, // 金額
+      { wch: 12 }, // 勘定科目
+      { wch: 18 }, // 利用店舗
+      { wch: 30 }, // 利用目的
+      { wch: 12 }, // 領収書
+      { wch: 12 }  // ステータス
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '申請一覧');
+
+    const now = new Date();
+    const stamp = now.getFullYear()
+      + String(now.getMonth()+1).padStart(2,'0')
+      + String(now.getDate()).padStart(2,'0');
+    XLSX.writeFile(wb, `申請一覧_${stamp}.xlsx`);
+    showToast(`${filteredList.length} 件のデータをExcelでダウンロードしました。`);
   }
 
   // 初期読み込みの実行
